@@ -1,0 +1,10 @@
+{
+  "name": "spotpusula",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "assets": {"directory": "./public", "binding": "ASSETS", "run_worker_first": true},
+  "d1_databases": [{"binding": "DB", "database_name": "spotpusula-private", "database_id": "f660d251-fcb8-48a4-94fe-dabf9f54bfca"}],
+  "triggers": {"crons": ["* * * * *"]},
+  "observability": {"enabled": false}
+}
