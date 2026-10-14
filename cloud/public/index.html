@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpotPusula</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main><header><span class="tag">SANAL PORTFÖY</span><h1>SpotPusula</h1><p>Son karar, açık pozisyonlar ve sonuçlar.</p></header>
+<form id="login"><label for="token">Özel giriş anahtarın</label><input id="token" type="password" autocomplete="current-password" required><button>Giriş yap</button></form>
+<p id="notice" role="status"></p><section id="dashboard" hidden>
+<div class="toolbar"><button id="refresh">Yenile</button><button id="pause"></button><button id="logout">Çıkış</button></div>
+<p id="health"></p><div class="cards"><article><small>Tahmini portföy değeri</small><strong id="equity"></strong></article><article><small>Nakit</small><strong id="cash"></strong></article><article><small>Gerçekleşmiş kâr / zarar</small><strong id="pnl"></strong></article></div>
+<p id="times"></p><h2>Son karar</h2><section id="latest"></section><h2>Açık pozisyonlar</h2><section id="positions"></section><h2>Karar geçmişi</h2><section id="reports"></section><h2>İşlem günlüğü</h2><section id="events"></section>
+</section><footer>Fiyatlar son kontrol anına aittir. Gerçek para kullanılmaz. Dakikalık takipte kesinti ve fiyat atlaması olabilir.</footer></main></body></html>
