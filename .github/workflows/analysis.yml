@@ -1,0 +1,28 @@
+name: Scheduled research
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '10 0,4,8,12,16,20 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: spotpusula-analysis
+  cancel-in-progress: false
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run private analysis
+        env:
+          SPOTPUSULA_URL: ${{ secrets.SPOTPUSULA_URL }}
+          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        run: python scanner/cloud_run.py
