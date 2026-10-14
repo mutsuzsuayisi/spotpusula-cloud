@@ -125,7 +125,18 @@ def cycle():
     request={'model':model,'messages':[{'role':'system','content':SYSTEM},{'role':'user','content':json.dumps(data,ensure_ascii=False,allow_nan=False)}],
              'response_format':{'type':'json_object'}}
     STAGE = 'gemini'
-    response=json.loads(providers.request('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',request,ai_key,timeout=180))
+    endpoint='https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+    try:
+        response=json.loads(providers.request(endpoint,request,ai_key,timeout=180))
+    except ValueError as error:
+        # One free-tier fallback for explicit provider capacity/rate-limit failures.
+        # Never retry ambiguous timeouts, authentication errors or malformed answers.
+        if safe_error(error) not in {'HTTP_429','HTTP_503'} or model=='gemini-2.5-flash':
+            raise
+        model='gemini-2.5-flash'
+        request['model']=model
+        STAGE='gemini_fallback'
+        response=json.loads(providers.request(endpoint,request,ai_key,timeout=180))
     STAGE = 'validate_answer'
     answer=validate_answer(response['choices'][0]['message']['content'])
     # The ID represents the candle cycle, not a random request. Replays cannot trade twice.
