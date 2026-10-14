@@ -139,6 +139,8 @@ def cycle():
         response=json.loads(providers.request(endpoint,request,ai_key,timeout=180))
     STAGE = 'validate_answer'
     answer=validate_answer(response['choices'][0]['message']['content'])
+    answer['detail']='Model: '+model+'\n\n'+answer['detail']
+    answer=validate_answer(json.dumps(answer,ensure_ascii=False))
     # The ID represents the candle cycle, not a random request. Replays cannot trade twice.
     closed=market['BTCUSDT']['four_hour']['last_closed']
     result={'id':'cycle-'+str(closed),'wallet_basis':context['basis'],'price_time':scan['price_time'],
