@@ -131,9 +131,9 @@ def cycle():
     except ValueError as error:
         # One free-tier fallback for explicit provider capacity/rate-limit failures.
         # Never retry ambiguous timeouts, authentication errors or malformed answers.
-        if safe_error(error) not in {'HTTP_429','HTTP_503'} or model=='gemini-2.5-flash':
+        if safe_error(error) not in {'HTTP_429','HTTP_503'} or model=='gemini-3.6-flash':
             raise
-        model='gemini-2.5-flash'
+        model='gemini-3.6-flash'
         request['model']=model
         STAGE='gemini_fallback'
         response=json.loads(providers.request(endpoint,request,ai_key,timeout=180))
