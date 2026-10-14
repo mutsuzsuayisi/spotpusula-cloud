@@ -45,7 +45,7 @@ async function quotes(symbols) {
     out[symbol]={bid:Number(q.bidPrice),ask:Number(q.askPrice),at:start};
   }));return out;
 }
-async function health(env,message){for(let i=0;i<2;i++){const old=await read(env);old.wallet.health=message;if(await save(env,old,old.wallet))return;}}
+async function health(env,message,analysis=false){for(let i=0;i<2;i++){const old=await read(env);old.wallet.health=message;if(analysis)old.wallet.analysis_error=message;if(await save(env,old,old.wallet))return;}}
 async function tick(env){
   try {
     for(let attempt=0;attempt<2;attempt++){
@@ -54,7 +54,7 @@ async function tick(env){
       const now=Date.now(), gap=w.last_check&&now-Date.parse(w.last_check)>180000;
       const events=checkStops(w,q,now);
       if(gap&&w.positions.length)events.push({side:'GAP',reason:'Kontrol aralığı 3 dakikayı aştı; geçmiş fiyattan dolum yapılmadı.'});
-      w.last_check=new Date(now).toISOString();w.health='Çalışıyor';
+      w.last_check=new Date(now).toISOString();w.health=w.analysis_error||'Çalışıyor';
       if(await save(env,old,w,events))return;
     }
   } catch {await health(env,'Fiyat kontrolü tamamlanamadı; son fiyat zamanı kontrol edilmeli.');}
@@ -94,7 +94,7 @@ async function ingest(env,r){
     }
     const report={id:r.id,price_time:r.price_time,analysis:r.analysis,outcomes,model:r.model||'',generated:new Date().toISOString(),
       evidence:{candidates:r.candidates,btc:r.btc,wallet_basis:r.wallet_basis,blocked:r.blocked}};
-    w.last_analysis=report.generated;w.health='Analiz tamamlandı';
+    w.last_analysis=report.generated;w.health='Analiz tamamlandı';w.analysis_error=null;
     if(await save(env,old,w,events,report))return reply({ok:true});
   }
   return reply({error:'RETRY_LATER'},409);
@@ -111,7 +111,7 @@ export async function handle(req,env){
     if(!await equal((req.headers.get('Authorization')||'').replace(/^Bearer /,''),env.INGEST_TOKEN))return reply({error:'UNAUTHORIZED'},401);
     if(path==='/internal/context'&&req.method==='GET'){const {wallet}=await read(env);return reply({wallet,basis:basis(wallet)});}
     if(path==='/internal/report'&&req.method==='POST')return ingest(env,await body(req));
-    if(path==='/internal/failure'&&req.method==='POST'){await health(env,'Son analiz tamamlanamadı. Ayrıntılı teknik hata public günlüğe yazılmadı.');return reply({ok:true});}
+    if(path==='/internal/failure'&&req.method==='POST'){await health(env,'Son analiz tamamlanamadı. Ayrıntılı teknik hata public günlüğe yazılmadı.',true);return reply({ok:true});}
     return reply({error:'NOT_FOUND'},404);
   }
   if(path.startsWith('/api/')){
