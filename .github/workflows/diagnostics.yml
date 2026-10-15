@@ -1,0 +1,51 @@
+name: AI connection diagnostic
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare API routes without portfolio data
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        shell: python
+        run: |
+          import json, os, urllib.request, urllib.error
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs): return None
+          key = os.environ['GEMINI_API_KEY']
+          root = 'https://generativelanguage.googleapis.com/v1beta/'
+          prompt = 'Return exactly this JSON: {"ok":true}'
+          cases = [
+              ('compat', root+'openai/chat/completions',
+               {'Authorization': 'Bearer '+key},
+               {'model':'gemini-3.8-flash','messages':[{'role':'user','content':prompt}], 'response_format':{'type':'json_object'}}),
+              ('native', root+'models/gemini-3.8-flash:generateContent',
+               {'x-goog-api-key':key},
+               {'contents':[{'parts':[{'text':prompt}]}], 'generationConfig':{'responseMimeType':'application/json'}}),
+          ]
+          for label, url, auth, body in cases:
+              try:
+                  req=urllib.request.Request(url, data=json.dumps(body).encode(), headers={**auth,'Content-Type':'application/json','User-Agent':'SpotPusula/1.0'})
+                  with urllib.request.build_opener(NoRedirect()).open(req,timeout=90) as response:
+                      data=json.loads(response.read(1_000_000))
+                  text=(data['choices'][0]['message']['content'] if label=='compat' else ''.join(p.get('text','') for p in data['candidates'][0]['content']['parts'] if not p.get('thought')))
+                  print(label+': '+('VALID_JSON' if json.loads(text)=={'ok':True} else 'UNEXPECTED_REPLY'),flush=True)
+              except urllib.error.HTTPError as error:
+                  # Raw responses can include credentials or payloads. Emit fixed categories only.
+                  reason='OTHER'
+                  try:
+                      obj=json.loads(error.read(65536)); msg=str(obj.get('error',{}).get('message','')).lower()
+                      if 'high demand' in msg or 'overload' in msg: reason='CAPACITY'
+                      elif 'quota' in msg or 'rate limit' in msg: reason='QUOTA'
+                      elif 'api key' in msg: reason='API_KEY'
+                      elif 'not found' in msg or 'not supported' in msg: reason='MODEL_OR_API'
+                      elif 'policy check' in msg: reason='POLICY_SERVICE'
+                  except Exception: pass
+                  print(label+': HTTP_'+str(error.code)+':'+reason,flush=True)
+              except (urllib.error.URLError,TimeoutError,OSError):
+                  print(label+': NETWORK_UNAVAILABLE',flush=True)
+              except Exception:
+                  print(label+': INVALID_RESPONSE',flush=True)
