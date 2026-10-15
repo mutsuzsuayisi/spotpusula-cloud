@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import subprocess
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -172,8 +173,27 @@ def main():
                 pass
     print('SpotPusula: tamamlandı.' if success else 'SpotPusula: işlem tamamlanamadı. Gizli panelde durum kontrol edilmeli.')
     if diagnostic: print('Diagnostic: '+diagnostic)
-    return 0 if success else 1
+    if success:
+        return 0
+    # Only explicit temporary AI service failures are safe to retry automatically.
+    # Never retry quota/authentication errors, invalid answers or ambiguous uploads.
+    if diagnostic in {'gemini:HTTP_503', 'gemini_fallback:HTTP_503'}:
+        return 75
+    return 1
+
+
+def run_with_recovery():
+    # A new process reloads market prices, wallet state and temporary storage.
+    # At most three calls per model per scheduled run (18/day at six runs/day).
+    for attempt in range(3):
+        result = subprocess.run([sys.executable, os.path.abspath(__file__), '--single-cycle'], check=False)
+        if result.returncode != 75:
+            return result.returncode
+        if attempt < 2:
+            print('SpotPusula: AI hizmeti geçici olarak kullanılamıyor; güncel verilerle yeniden denenecek.', flush=True)
+            time.sleep((120, 300)[attempt])
+    return 1
 
 
 if __name__=='__main__':
-    sys.exit(main())
+    sys.exit(main() if '--single-cycle' in sys.argv else run_with_recovery())
