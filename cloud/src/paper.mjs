@@ -1,5 +1,5 @@
 // Virtual trading only. No exchange account credentials or order endpoints.
-export const RULES = Object.freeze({fee:0.001, slip:0.001, risk:50, totalRisk:100, cap:1000, positions:2});
+export const RULES = Object.freeze({fee:0.001, slip:0.001, risk:2, totalRisk:4, cap:50, positions:2, weakRisk:1, weakCap:30});
 const valid = n => typeof n === 'number' && Number.isFinite(n) && n > 0;
 export function quoteValid(q, now=Date.now()) {
   return q && valid(q.bid) && valid(q.ask) && q.ask >= q.bid &&
@@ -15,13 +15,14 @@ export function sell(wallet, symbol, q, reason, now=Date.now()) {
   wallet.positions=wallet.positions.filter(x=>x.symbol!==symbol);
   return {side:'SELL',symbol,qty:p.qty,price,fee,pnl,reason,at:new Date(now).toISOString()};
 }
-export function buy(wallet, action, candidate, q, now=Date.now()) {
+export function buy(wallet, action, candidate, q, now=Date.now(), weakMarket=false) {
   if (wallet.paused) throw Error('PAUSED');
   if (!candidate?.scenario_allowed || candidate.symbol!==action.symbol) throw Error('CANDIDATE_BLOCKED');
   if (!quoteValid(q,now)) throw Error('QUOTE_INVALID');
-  if (wallet.positions.length>=RULES.positions || wallet.positions.some(p=>p.symbol===action.symbol)) throw Error('POSITION_LIMIT');
+  if (wallet.positions.length>=(weakMarket?1:RULES.positions) || wallet.positions.some(p=>p.symbol===action.symbol)) throw Error('POSITION_LIMIT');
   const h=candidate.four_hour;
   if (!h || !(h.close>h.ema20 && h.close>h.ema50)) throw Error('CLOSE_UNCONFIRMED');
+  if (weakMarket && (!(candidate.score>=70) || !(h.ema20>h.ema50))) throw Error('WEAK_MARKET_CANDIDATE');
   if (typeof action.stop!=='number' || typeof action.target!=='number') throw Error('LEVEL_INVALID');
   const entry=q.ask*(1+RULES.slip), {stop,target}=action;
   if (!(valid(stop) && valid(target) && stop<entry && target>entry)) throw Error('LEVEL_INVALID');
@@ -32,8 +33,8 @@ export function buy(wallet, action, candidate, q, now=Date.now()) {
   const gainPerUnit=target*(1-RULES.slip)*(1-RULES.fee)-entry*(1+RULES.fee);
   if (!(gainPerUnit/lossPerUnit>=1.5)) throw Error('REWARD_RISK_LOW');
   const availableRisk=RULES.totalRisk-wallet.positions.reduce((s,p)=>s+p.risk,0);
-  const qty=Math.min(Math.min(RULES.risk,availableRisk)/lossPerUnit,
-    Math.min(RULES.cap,wallet.cash)/(entry*(1+RULES.fee)));
+  const qty=Math.min(Math.min(weakMarket?RULES.weakRisk:RULES.risk,availableRisk)/lossPerUnit,
+    Math.min(weakMarket?RULES.weakCap:RULES.cap,wallet.cash)/(entry*(1+RULES.fee)));
   const cost=qty*entry*(1+RULES.fee);
   if (!(qty>0 && cost>=10 && cost<=wallet.cash+1e-8)) throw Error('BUDGET_INVALID');
   const p={symbol:action.symbol,qty,entry,stop,target,cost,risk:qty*lossPerUnit,opened:new Date(now).toISOString()};

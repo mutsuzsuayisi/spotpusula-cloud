@@ -85,12 +85,13 @@ async function ingest(env,r){
         if(a.side==='BUY'){
           if(r.blocked)throw Error('SCAN_BLOCKED');
           const btc=r.btc?.four_hour;
-          if(!btc||!(btc.close>btc.ema20&&btc.close>btc.ema50))throw Error('BTC_UNCONFIRMED');
+          if(!btc||![btc.close,btc.ema20,btc.ema50].every(Number.isFinite))throw Error('BTC_UNCONFIRMED');
           if(Date.now()-btc.last_closed>5*3600000||Date.now()-(c?.four_hour?.last_closed||0)>5*3600000)throw Error('CANDLE_STALE');
-          events.push(buy(w,a,c,q[a.symbol]));
+          const weakMarket=!(btc.close>btc.ema20&&btc.close>btc.ema50);
+          events.push(buy(w,a,c,q[a.symbol],Date.now(),weakMarket));
         }else{events.push(sell(w,a.symbol,q[a.symbol],a.reason));}
         outcomes.push({symbol:a.symbol,side:a.side,status:'EXECUTED'});
-      }catch(e){const codes=['WALLET_CHANGED','PAUSED','SCAN_BLOCKED','BTC_UNCONFIRMED','CANDLE_STALE','QUOTE_INVALID','CANDIDATE_BLOCKED','POSITION_LIMIT','CLOSE_UNCONFIRMED','LEVEL_INVALID','PRICE_MOVED','SPREAD_WIDE','REWARD_RISK_LOW','BUDGET_INVALID','POSITION_MISSING'];outcomes.push({symbol:a.symbol,status:'REJECTED',code:codes.includes(e.message)?e.message:'ACTION_INVALID'});}
+      }catch(e){const codes=['WALLET_CHANGED','PAUSED','SCAN_BLOCKED','BTC_UNCONFIRMED','CANDLE_STALE','QUOTE_INVALID','CANDIDATE_BLOCKED','POSITION_LIMIT','CLOSE_UNCONFIRMED','WEAK_MARKET_CANDIDATE','LEVEL_INVALID','PRICE_MOVED','SPREAD_WIDE','REWARD_RISK_LOW','BUDGET_INVALID','POSITION_MISSING'];outcomes.push({symbol:a.symbol,status:'REJECTED',code:codes.includes(e.message)?e.message:'ACTION_INVALID'});}
     }
     const report={id:r.id,price_time:r.price_time,analysis:r.analysis,outcomes,model:r.model||'',generated:new Date().toISOString(),
       evidence:{candidates:r.candidates,btc:r.btc,wallet_basis:r.wallet_basis,blocked:r.blocked}};
@@ -120,8 +121,9 @@ export async function handle(req,env){
     if(path==='/api/logout'&&req.method==='POST')return reply({ok:true},200,{'Set-Cookie':'sp_session=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'});
     if(path==='/api/dashboard'&&req.method==='GET'){
       const {wallet}=await read(env);
-      const reports=await env.DB.prepare("SELECT id,created AS generated,json_extract(body,'$.analysis.summary') AS summary FROM reports ORDER BY created DESC LIMIT 20").all();
-      const events=await env.DB.prepare('SELECT body FROM events ORDER BY created DESC LIMIT 100').all();
+      const since=wallet.reset_at||'1970-01-01T00:00:00.000Z';
+      const reports=await env.DB.prepare("SELECT id,created AS generated,json_extract(body,'$.analysis.summary') AS summary FROM reports WHERE created>=? ORDER BY created DESC LIMIT 20").bind(since).all();
+      const events=await env.DB.prepare('SELECT body FROM events WHERE created>=? ORDER BY created DESC LIMIT 100').bind(since).all();
       return reply({wallet,reports:reports.results,events:events.results.map(r=>JSON.parse(r.body))});
     }
     if(path==='/api/report'&&req.method==='GET'){
@@ -131,6 +133,18 @@ export async function handle(req,env){
     if(path==='/api/pause'&&req.method==='POST'){
       const data=await body(req,1000);if(typeof data.paused!=='boolean')return reply({error:'INVALID'},400);
       for(let i=0;i<3;i++){const old=await read(env);old.wallet.paused=data.paused;if(await save(env,old,old.wallet,[{side:'CONTROL',reason:data.paused?'Model işlemleri durduruldu. Stop takibi sürüyor.':'Otomatik sanal yönetim etkinleştirildi.'}]))return reply({ok:true});}
+      return reply({error:'RETRY_LATER'},409);
+    }
+    if(path==='/api/reset-paper'&&req.method==='POST'){
+      const data=await body(req,1000);
+      if(data.amount!==200||data.confirm!=='RESET_200')return reply({error:'INVALID'},400);
+      for(let i=0;i<3;i++){
+        const old=await read(env),w=old.wallet;
+        if(w.reset_at||w.positions.length||!w.paused||w.realized!==0)return reply({error:'RESET_UNAVAILABLE'},409);
+        w.cash=200;w.realized=0;w.last_analysis=null;w.analysis_error=null;w.health='Yeni 200 USDT sanal deneme hazır';
+        w.reset_at=new Date().toISOString();
+        if(await save(env,old,w,[{side:'CONTROL',symbol:'',qty:0,price:0,fee:0,pnl:0,reason:'Yeni sanal deneme: bakiye 200 USDT olarak sıfırlandı.',at:w.reset_at}]))return reply({ok:true});
+      }
       return reply({error:'RETRY_LATER'},409);
     }
     return reply({error:'NOT_FOUND'},404);
