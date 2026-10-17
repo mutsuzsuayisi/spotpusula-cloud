@@ -31,12 +31,15 @@ Gerçek emir yok: sadece sanal portföy için öneri üret. Kısa özet en fazla
 ayrıntıda piyasa, karşı argüman, giriş gerekçesi, geçersizlik ve çıkış mantığını açıkla.
 Hacim göreli ölçüsü son kapanmış GÜNLÜK mumundur. Güncel fiyatı dört saatlik kapanış sanma.
 Giriş koşulu henüz gerçekleşmediyse BUY önerme; bekleme gerekçesini yaz. Limit emir yok.
-İşlem başına en fazla 50 USDT, toplam açık risk 100 USDT, en fazla 2 pozisyon ve pozisyon
-başına masraflar dahil 1000 USDT. Miktarı uygulama hesaplar. Stop ve hedef gözlenen bid
+200 USDT sanal başlangıç bakiyesi için işlem başına en fazla 2 USDT, toplam açık risk 4 USDT,
+en fazla 2 pozisyon ve pozisyon başına masraflar dahil 50 USDT. BTC zayıfsa yalnız bir
+pozisyon açılabilir; en fazla 1 USDT planlanan risk ve 30 USDT harcama uygulanır.
+Miktarı uygulama hesaplar. Stop ve hedef gözlenen bid
 fiyatıyla dakikalık izlenir; kapanış beklenmez. Stop garantili gerçekleşme değildir.
-BUY için scenario_allowed, kapanmış dört saatlik mumun EMA20 ve EMA50 üzerinde olması,
-BTC dört saatlik kapanışının iki ortalama üzerinde olması gerekir. Ücret/kayma sonrası
-ödül/risk en az 1.5 olmalı. Bunlar başlangıç test kurallarıdır, doğrulanmış kârlılık değildir.
+BUY için scenario_allowed ve adayın kapanmış dört saatlik mumunun EMA20 ve EMA50 üzerinde
+olması gerekir. BTC zayıfsa sadece güçlü aday (puan en az 70 ve dört saatlik EMA20>EMA50)
+değerlendirilebilir; piyasa riskini özette belirt. İşlem açmak zorunlu değildir. Ücret/kayma
+sonrası ödül/risk en az 1.5 olmalı. Bunlar test kurallarıdır, doğrulanmış kârlılık değildir.
 Mevcut pozisyonların stopunu uzaklaştırma veya zarardakine ekleme önerme. SELL mevcut
 pozisyonun tamamını kapatır. BUY hemen, güncel fiyat tekrar kontrol edilerek uygulanır.
 İşlem gerekmiyorsa actions boş olsun. JSON dışında hiçbir şey yazma:
@@ -116,9 +119,12 @@ def cycle():
     # No personal names, credentials, raw database, or full ledger goes to Gemini.
     def compact(r): return {k:v for k,v in r.items() if k not in ('candles','daily_ohlcv_last30')}
     candidates=[compact(r) for r in selected]
+    btc_scan=next((r for r in scan['items'] if r['symbol']=='BTCUSDT'),None)
+    btc_four=btc_scan.get('four_hour') if btc_scan else None
+    weak_market=not btc_four or not (btc_four['close']>btc_four['ema20'] and btc_four['close']>btc_four['ema50'])
     for c in candidates:
         held=next((p['value'] for p in positions if p['symbol']==c['symbol']),0)
-        c['scenario']=engine.scenario(c,equity,wallet['cash'],.5,10,held,.1,.1) if c.get('scenario_allowed') else None
+        c['scenario']=engine.scenario(c,equity,wallet['cash'],.5 if weak_market else 1,15 if weak_market else 25,held,.1,.1) if c.get('scenario_allowed') else None
     market={s:next((compact(r) for r in scan['items'] if r['symbol']==s),None) for s in ('BTCUSDT','ETHUSDT')}
     if not all(market.values()):raise ValueError('MARKET_CONTEXT_MISSING')
     summary=service.decision_summary(scan)
