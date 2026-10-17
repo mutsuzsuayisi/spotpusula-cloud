@@ -38,11 +38,23 @@ async function quotes(symbols) {
   const out={};
   await Promise.all([...new Set(symbols)].map(async symbol=>{
     if(!/^[A-Z0-9]{2,26}USDT$/.test(symbol))throw Error('SYMBOL_INVALID');
-    const start=Date.now();
-    const r=await fetch('https://data-api.binance.vision/api/v3/ticker/bookTicker?symbol='+symbol,{signal:AbortSignal.timeout(8000),cache:'no-store'});
-    if(!r.ok)throw Error('MARKET_UNAVAILABLE');const q=await r.json();
-    if(q.symbol!==symbol)throw Error('SYMBOL_MISMATCH');
-    out[symbol]={bid:Number(q.bidPrice),ask:Number(q.askPrice),at:start};
+    for(const host of ['data-api.binance.vision','api.binance.com','api1.binance.com']){
+      try{
+        const start=Date.now();
+        const r=await fetch('https://'+host+'/api/v3/ticker/bookTicker?symbol='+symbol,{signal:AbortSignal.timeout(8000),cache:'no-store'});
+        if(!r.ok)continue;
+        const q=await r.json(),bid=Number(q.bidPrice),ask=Number(q.askPrice);
+        if(q.symbol===symbol&&bid>0&&ask>=bid){out[symbol]={bid,ask,at:start};return;}
+      }catch{}
+    }
+    // Bybit spot is a separate, explicitly validated reference if Binance blocks Worker egress.
+    try{
+      const start=Date.now();
+      const r=await fetch('https://api.bybit.com/v5/market/tickers?category=spot&symbol='+symbol,{signal:AbortSignal.timeout(8000),cache:'no-store'});
+      if(r.ok){const q=await r.json(),t=q?.result?.list?.[0],bid=Number(t?.bid1Price),ask=Number(t?.ask1Price);
+        if(q.retCode===0&&t?.symbol===symbol&&bid>0&&ask>=bid){out[symbol]={bid,ask,at:start,source:'Bybit spot'};return;}}
+    }catch{}
+    throw Error('MARKET_UNAVAILABLE');
   }));return out;
 }
 async function health(env,message,analysis=false){for(let i=0;i<2;i++){const old=await read(env);old.wallet.health=message;if(analysis)old.wallet.analysis_error=message;if(await save(env,old,old.wallet))return;}}
@@ -119,6 +131,11 @@ export async function handle(req,env){
     if(!await equal(cookie(req),env.DASHBOARD_TOKEN))return reply({error:'UNAUTHORIZED'},401);
     if(req.method!=='GET'&&!sameOrigin(req))return reply({error:'FORBIDDEN'},403);
     if(path==='/api/logout'&&req.method==='POST')return reply({ok:true},200,{'Set-Cookie':'sp_session=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'});
+    if(path==='/api/quote-check'&&req.method==='GET'){
+      const symbol=url.searchParams.get('symbol')||'';
+      try{const q=await quotes([symbol]);return reply({ok:true,symbol,bid:q[symbol].bid,ask:q[symbol].ask,source:q[symbol].source||'Binance spot'});}
+      catch{return reply({ok:false,error:'MARKET_UNAVAILABLE'},503);}
+    }
     if(path==='/api/dashboard'&&req.method==='GET'){
       const {wallet}=await read(env);
       const since=wallet.reset_at||'1970-01-01T00:00:00.000Z';
