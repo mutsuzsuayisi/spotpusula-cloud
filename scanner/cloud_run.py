@@ -151,9 +151,11 @@ def cycle():
     answer=validate_answer(response['choices'][0]['message']['content'])
     answer['detail']='Model: '+model+'\n\n'+answer['detail']
     answer=validate_answer(json.dumps(answer,ensure_ascii=False))
-    # The ID represents the candle cycle, not a random request. Replays cannot trade twice.
+    # Keep one report per closed candle, but make a reset a new paper-trial cycle.
     closed=market['BTCUSDT']['four_hour']['last_closed']
-    result={'id':'cycle-'+str(closed),'wallet_basis':context['basis'],'price_time':scan['price_time'],
+    reset_at=wallet.get('reset_at')
+    reset_ms=int(datetime.fromisoformat(reset_at.replace('Z','+00:00')).timestamp()*1000) if reset_at else 0
+    result={'id':'cycle-'+str(max(int(closed),reset_ms)),'wallet_basis':context['basis'],'price_time':scan['price_time'],
             'analysis':answer,'candidates':candidates,'btc':market['BTCUSDT'],
             'blocked':summary['scenario_blocked'],'model':model}
     STAGE = 'save_report'
