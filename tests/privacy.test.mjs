@@ -14,7 +14,7 @@ test('dashboard key does not authorize ingestion',async()=>{
   assert.equal(r.status,401);
 });
 test('cross-origin control and login are denied',async()=>{
-  for(const path of ['/api/login','/api/pause']){
+  for(const path of ['/api/login','/api/pause','/api/reset-paper']){
     const r=await worker.fetch(new Request('https://example.test'+path,{method:'POST',headers:{Cookie:'sp_session='+token,Origin:'https://evil.test'},body:'{}'}),env);
     assert.equal(r.status,403);
   }
