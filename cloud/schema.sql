@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS wallet (
   token TEXT NOT NULL,
   body TEXT NOT NULL
 );
-INSERT OR IGNORE INTO wallet VALUES(1,0,'initial','{"cash":10000,"positions":[],"realized":0,"paused":true,"last_check":null,"last_analysis":null,"health":"Kurulum doğrulaması bekleniyor"}');
+INSERT OR IGNORE INTO wallet VALUES(1,0,'initial','{"cash":200,"positions":[],"realized":0,"paused":true,"last_check":null,"last_analysis":null,"health":"Kurulum doğrulaması bekleniyor"}');
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
   created TEXT NOT NULL,
