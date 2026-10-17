@@ -139,7 +139,7 @@ export async function handle(req,env){
     if(path==='/api/dashboard'&&req.method==='GET'){
       const {wallet}=await read(env);
       const since=wallet.reset_at||'1970-01-01T00:00:00.000Z';
-      const reports=await env.DB.prepare("SELECT id,created AS generated,json_extract(body,'$.analysis.summary') AS summary FROM reports WHERE created>=? ORDER BY created DESC LIMIT 20").bind(since).all();
+      const reports=await env.DB.prepare("SELECT id,created AS generated,json_extract(body,'$.analysis.summary') AS summary,json_extract(body,'$.outcomes') AS outcomes FROM reports WHERE created>=? ORDER BY created DESC LIMIT 20").bind(since).all();
       const events=await env.DB.prepare('SELECT body FROM events WHERE created>=? ORDER BY created DESC LIMIT 100').bind(since).all();
       return reply({wallet,reports:reports.results,events:events.results.map(r=>JSON.parse(r.body))});
     }
