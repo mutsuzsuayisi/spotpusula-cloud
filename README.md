@@ -6,10 +6,9 @@ Gerçek borsa emri veya Binance hesap anahtarı kullanılmaz.
 
 ## Durum
 
-Yerel testler yapılmıştır. Cloudflare/GitHub/Gemini hesaplarında kurulum ve gerçek
-ağ testi henüz yapılmamıştır. Ücretsiz CPU kotasına uyum, Binance'in sunucu IP'sine
-erişimi ve Gemini model kotası yayından önce doğrulanmalıdır. Canlı sonuç veya
-kesintisizlik garantisi yoktur. Başlangıçta otomatik işlemler DURAKLATILMIŞTIR.
+Uygulama Cloudflare'da yayındadır; tarama GitHub Actions ile, model yorumu Gemini
+Free Tier ile çalışır. Dış hizmetler ve ücretsiz kotalar nedeniyle kesintisizlik
+garantisi yoktur. Panel son analiz ve fiyat kontrol zamanlarını gösterir.
 
 ## Mimari
 
@@ -39,8 +38,8 @@ Bu, hizmet sağlayıcılarından gizlilik değildir: GitHub tarama verisini işl
 Cloudflare özel kayıtları saklar, Google gönderilen sanal portföy ve piyasa özetini
 işler. Gemini Free Tier veri kullanım koşulları ayrıca geçerlidir.
 
-Masaüstündeki uygulama ve buluttaki cüzdan otomatik eşitlenmez. Bulut cüzdanı sıfır
-pozisyon ve 10.000 USDT ile başlar. Eski yerel veritabanı bu pakete alınmamıştır.
+Masaüstündeki uygulama ve buluttaki cüzdan otomatik eşitlenmez. Bulut cüzdanının
+yeni sanal deneme başlangıcı 200 USDT'dir. Eski yerel veritabanı bu pakete alınmamıştır.
 
 ## Kurulum — hesaplar hazır olduğunda
 
@@ -82,15 +81,18 @@ işler küçültülmeli. Gemini ücretsiz kota hesabında 6 günlük isteğe yet
 
 ## İşlem kuralları
 
-- Sabit başlangıç deneme limiti: işlem başına 50, toplam 100 USDT planlanan risk.
-- En fazla 2 açık pozisyon; masraflar dahil pozisyon başına 1.000 USDT.
+- 200 USDT sanal başlangıçta işlem başına en çok 2, toplam 4 USDT planlanan risk.
+- En fazla 2 açık pozisyon; masraflar dahil pozisyon başına 50 USDT.
+- BTC 4 saatlik kapanışı EMA20/50 altında olduğunda yalnızca bir güçlü aday:
+  puanı en az 70, kendi EMA20'si EMA50'sinin üzerinde; en çok 1 USDT risk
+  ve 30 USDT harcama.
 - Masraflar: %0,1 komisyon ve %0,1 kayma, her yönde.
-- Alışta aday filtresi ve BTC/adaya ait kapanmış 4 saatlik mumların EMA20/50 üzerinde olması.
+- Alışta aday filtresi ve adayın kapanmış 4 saatlik mumunun EMA20/50 üzerinde olması.
 - Model fiyatına göre %2'den fazla hareket, eski kotasyon ve uygunsuz stop/hedef reddedilir.
 - Masraflar sonrası hedef kazanç / planlanan stop kaybı en az 1,5.
 - Aynı pozisyona ekleme yok. Model SELL veya stop/hedef pozisyonun tamamını kapatır.
 - Miktar modelden alınmaz. Stop tetiklenmesi kapanış beklemez, ama bir dakikalık
-  gözlem aralığı ve boşluklar nedeniyle kayıp 50 USDT'yi aşabilir.
+  gözlem aralığı ve boşluklar nedeniyle kayıp planlanan 1–2 USDT'yi aşabilir.
 - Duraklatma modelin alım/satımını durdurur; mevcut koruyucu stop/hedef takibi sürer.
 - Yeterli piyasa verisi yoksa yeni işlem açılmaz. Kota dolması stop takibini de
   kesebilir; panelde son kontrol zamanını takip et.
@@ -102,7 +104,8 @@ Bunlar ölçülebilir başlangıç kurallarıdır; istatistiksel olarak doğrula
 D1 kayıtları kod deposundan bağımsızdır. Başlangıç sürümünde otomatik harici yedek
 yoktur. Cloudflare üzerinden düzenli D1 export alınmalı ve özel yerde saklanmalıdır;
 public GitHub deposuna yüklenmemelidir. Panel son 20 rapor ve 100 olayı gösterir,
-veritabanındaki eski kayıtları silmez. Depolama kotası izlenmelidir.
+veritabanındaki eski kayıtları silmez. 200 USDT'ye sıfırlama öncesi raporlar
+veritabanında kalır ancak yeni denemenin panelinde gösterilmez. Depolama kotası izlenmelidir.
 
 ## Testler
 
