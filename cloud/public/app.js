@@ -13,6 +13,7 @@ async function refresh(){
     const stale=!w.last_check||Date.now()-Date.parse(w.last_check)>180000;
     $('health').textContent=(stale?'⚠ Takip güncel değil. ':'')+w.health+(paused?' · Model işlemleri duraklatıldı. Stop takibi sürer.':' · Otomatik sanal yönetim açık.');
     $('pause').textContent=paused?'Sanal yönetimi başlat':'Model işlemlerini durdur';
+    $('reset').hidden=!!w.reset_at||!paused||w.positions.length!==0||w.realized!==0;
     $('times').textContent='Son fiyat kontrolü: '+date(w.last_check)+' · Son analiz: '+date(w.last_analysis);
     $('latest').replaceChildren(node('p',d.reports[0]?.summary||'İlk analiz bekleniyor.'));
     if(d.reports[0])$('latest').append(report(d.reports[0]));
@@ -25,5 +26,6 @@ async function refresh(){
 $('login').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/login',{token:$('token').value});$('token').value='';await refresh();}catch(e){$('notice').textContent=e.message;}});
 $('refresh').onclick=refresh;
 $('pause').onclick=async()=>{try{await api('/api/pause',{paused:!paused});await refresh();}catch(e){$('notice').textContent=e.message;}};
+$('reset').onclick=async()=>{try{await api('/api/reset-paper',{amount:200,confirm:'RESET_200'});await refresh();}catch(e){$('notice').textContent=e.message;}};
 $('logout').onclick=async()=>{await api('/api/logout',{});$('dashboard').hidden=true;$('login').hidden=false;for(const id of ['latest','positions','reports','events'])$(id).replaceChildren();};
 refresh();setInterval(()=>{if(!$('dashboard').hidden)refresh();},60000);
