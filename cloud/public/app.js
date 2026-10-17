@@ -15,7 +15,14 @@ async function refresh(){
     $('pause').textContent=paused?'Sanal yönetimi başlat':'Model işlemlerini durdur';
     $('reset').hidden=!!w.reset_at||!paused||w.positions.length!==0||w.realized!==0;
     $('times').textContent='Son fiyat kontrolü: '+date(w.last_check)+' · Son analiz: '+date(w.last_analysis);
+    const decisions=d.reports[0]?.outcomes?JSON.parse(d.reports[0].outcomes):[];
+    const executed=decisions.filter(o=>o.status==='EXECUTED');
+    const rejected=decisions.filter(o=>o.status==='REJECTED');
+    const status=executed.length?'Sanal işlem gerçekleşti: '+executed.map(o=>o.symbol).join(', '):
+      rejected.length?'Öneri uygulanmadı: '+(rejected.some(o=>o.code==='MARKET_UNAVAILABLE'||o.code==='QUOTE_INVALID')?'canlı fiyat alınamadı':rejected[0].code):
+      'Yeni sanal işlem yok.';
     $('latest').replaceChildren(node('p',d.reports[0]?.summary||'İlk analiz bekleniyor.'));
+    if(d.reports[0])$('latest').append(node('p',status));
     if(d.reports[0])$('latest').append(report(d.reports[0]));
     $('positions').replaceChildren(...w.positions.map(p=>node('p',p.symbol+' · '+p.qty.toPrecision(6)+' adet · Stop '+p.stop+' · Hedef '+p.target+' · Fiyat zamanı '+date(p.marked_at))));
     if(!w.positions.length)$('positions').append(node('p','Açık pozisyon yok.'));
