@@ -1,4 +1,4 @@
-import {buy,sell,checkStops} from './paper.mjs';
+import {buy,sell,checkStops,quoteValid} from './paper.mjs';
 
 const HEADERS={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
   'Referrer-Policy':'no-referrer','X-Frame-Options':'DENY',
@@ -38,6 +38,13 @@ async function quotes(symbols) {
   const out={};
   await Promise.all([...new Set(symbols)].map(async symbol=>{
     if(!/^[A-Z0-9]{2,26}USDT$/.test(symbol))throw Error('SYMBOL_INVALID');
+    // This endpoint is reachable from the Worker when Binance egress is blocked.
+    try{
+      const start=Date.now();
+      const r=await fetch('https://api.bybit.com/v5/market/tickers?category=spot&symbol='+symbol,{signal:AbortSignal.timeout(8000),cache:'no-store'});
+      if(r.ok){const q=await r.json(),t=q?.result?.list?.[0],bid=Number(t?.bid1Price),ask=Number(t?.ask1Price);
+        if(q.retCode===0&&t?.symbol===symbol&&bid>0&&ask>=bid){out[symbol]={bid,ask,at:start,source:'Bybit spot'};return;}}
+    }catch{}
     for(const host of ['data-api.binance.vision','api.binance.com','api1.binance.com']){
       try{
         const start=Date.now();
@@ -47,13 +54,6 @@ async function quotes(symbols) {
         if(q.symbol===symbol&&bid>0&&ask>=bid){out[symbol]={bid,ask,at:start};return;}
       }catch{}
     }
-    // Bybit spot is a separate, explicitly validated reference if Binance blocks Worker egress.
-    try{
-      const start=Date.now();
-      const r=await fetch('https://api.bybit.com/v5/market/tickers?category=spot&symbol='+symbol,{signal:AbortSignal.timeout(8000),cache:'no-store'});
-      if(r.ok){const q=await r.json(),t=q?.result?.list?.[0],bid=Number(t?.bid1Price),ask=Number(t?.ask1Price);
-        if(q.retCode===0&&t?.symbol===symbol&&bid>0&&ask>=bid){out[symbol]={bid,ask,at:start,source:'Bybit spot'};return;}}
-    }catch{}
     throw Error('MARKET_UNAVAILABLE');
   }));return out;
 }
@@ -75,9 +75,16 @@ function validateReport(r){
   if(!r||!/^cycle-\d{10,13}$/.test(r.id)||typeof r.wallet_basis!=='string'||!r.analysis)throw Error('REPORT_INVALID');
   if(typeof r.analysis.summary!=='string'||r.analysis.summary.length>600||typeof r.analysis.detail!=='string'||r.analysis.detail.length>20000)throw Error('REPORT_INVALID');
   if(!Array.isArray(r.analysis.actions)||r.analysis.actions.length>2||!Array.isArray(r.candidates)||r.candidates.length>50)throw Error('REPORT_INVALID');
+  if(r.execution_quotes!==undefined&&(!Array.isArray(r.execution_quotes)||r.execution_quotes.length>2))throw Error('REPORT_INVALID');
   for(const a of r.analysis.actions){if(!['BUY','SELL'].includes(a.side)||typeof a.symbol!=='string'||typeof a.reason!=='string'||a.reason.length>600)throw Error('ACTION_INVALID');}
   const age=Date.now()-Date.parse(r.price_time);
   if(!Number.isFinite(age)||age< -30000||age>600000)throw Error('REPORT_STALE');
+}
+export function reportQuote(r,symbol,now=Date.now()){
+  const matches=r.execution_quotes?.filter(q=>q?.symbol===symbol);
+  if(!matches||matches.length!==1||matches[0].source!=='Binance spot')return null;
+  const q=matches[0];
+  return quoteValid(q,now)?{bid:q.bid,ask:q.ask,at:q.at,source:q.source}:null;
 }
 async function ingest(env,r){
   validateReport(r);
@@ -87,7 +94,7 @@ async function ingest(env,r){
     const compatible=basis(w)===r.wallet_basis;
     const allowed=compatible&&!w.paused;
     let q={};
-    if(allowed){try{q=await quotes([...w.positions.map(p=>p.symbol),...r.analysis.actions.map(a=>a.symbol)]);}catch{outcomes.push({status:'REJECTED',code:'MARKET_UNAVAILABLE'});}}
+    if(allowed){try{q=await quotes([...w.positions.map(p=>p.symbol),...r.analysis.actions.map(a=>a.symbol)]);}catch{}}
     // Stop/target checks take priority over discretionary model actions.
     events.push(...checkStops(w,q));
     for(const a of r.analysis.actions){
@@ -100,10 +107,17 @@ async function ingest(env,r){
           if(!btc||![btc.close,btc.ema20,btc.ema50].every(Number.isFinite))throw Error('BTC_UNCONFIRMED');
           if(Date.now()-btc.last_closed>5*3600000||Date.now()-(c?.four_hour?.last_closed||0)>5*3600000)throw Error('CANDLE_STALE');
           const weakMarket=!(btc.close>btc.ema20&&btc.close>btc.ema50);
-          events.push(buy(w,a,c,q[a.symbol],Date.now(),weakMarket));
-        }else{events.push(sell(w,a.symbol,q[a.symbol],a.reason));}
+          // Only the authenticated runner's fresh quote may back up a BUY.
+          // Stop monitoring and SELL still require a live Worker quote.
+          const book=q[a.symbol]||reportQuote(r,a.symbol);
+          if(!book)throw Error('MARKET_UNAVAILABLE');
+          events.push(buy(w,a,c,book,Date.now(),weakMarket));
+        }else{
+          if(!q[a.symbol])throw Error('MARKET_UNAVAILABLE');
+          events.push(sell(w,a.symbol,q[a.symbol],a.reason));
+        }
         outcomes.push({symbol:a.symbol,side:a.side,status:'EXECUTED'});
-      }catch(e){const codes=['WALLET_CHANGED','PAUSED','SCAN_BLOCKED','BTC_UNCONFIRMED','CANDLE_STALE','QUOTE_INVALID','CANDIDATE_BLOCKED','POSITION_LIMIT','CLOSE_UNCONFIRMED','WEAK_MARKET_CANDIDATE','LEVEL_INVALID','PRICE_MOVED','SPREAD_WIDE','REWARD_RISK_LOW','BUDGET_INVALID','POSITION_MISSING'];outcomes.push({symbol:a.symbol,status:'REJECTED',code:codes.includes(e.message)?e.message:'ACTION_INVALID'});}
+      }catch(e){const codes=['WALLET_CHANGED','PAUSED','SCAN_BLOCKED','BTC_UNCONFIRMED','CANDLE_STALE','MARKET_UNAVAILABLE','QUOTE_INVALID','CANDIDATE_BLOCKED','POSITION_LIMIT','CLOSE_UNCONFIRMED','WEAK_MARKET_CANDIDATE','LEVEL_INVALID','PRICE_MOVED','SPREAD_WIDE','REWARD_RISK_LOW','BUDGET_INVALID','POSITION_MISSING'];outcomes.push({symbol:a.symbol,status:'REJECTED',code:codes.includes(e.message)?e.message:'ACTION_INVALID'});}
     }
     const report={id:r.id,price_time:r.price_time,analysis:r.analysis,outcomes,model:r.model||'',generated:new Date().toISOString(),
       evidence:{candidates:r.candidates,btc:r.btc,wallet_basis:r.wallet_basis,blocked:r.blocked}};
