@@ -36,7 +36,9 @@ export function buy(wallet, action, candidate, q, now=Date.now(), weakMarket=fal
   const qty=Math.min(Math.min(weakMarket?RULES.weakRisk:RULES.risk,availableRisk)/lossPerUnit,
     Math.min(weakMarket?RULES.weakCap:RULES.cap,wallet.cash)/(entry*(1+RULES.fee)));
   const cost=qty*entry*(1+RULES.fee);
-  if (!(qty>0 && cost>=10 && cost<=wallet.cash+1e-8)) throw Error('BUDGET_INVALID');
+  // This is a fractional virtual portfolio, so it must not reject a valid
+  // risk-sized position solely because a real exchange may enforce a lot minimum.
+  if (!(qty>0 && cost>=1 && cost<=wallet.cash+1e-8)) throw Error('BUDGET_INVALID');
   const p={symbol:action.symbol,qty,entry,stop,target,cost,risk:qty*lossPerUnit,opened:new Date(now).toISOString()};
   wallet.cash=Math.max(0,wallet.cash-cost); wallet.positions.push(p);
   return {side:'BUY',...p,fee:qty*entry*RULES.fee,reason:action.reason,at:p.opened};
