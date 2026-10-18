@@ -31,6 +31,19 @@ class PrivacyTests(unittest.TestCase):
                 cloud_run.validate_answer(bad)
         self.assertEqual(cloud_run.validate_answer('{"summary":"Bekle","detail":"Teyit yok","actions":[]}')['actions'],[])
 
+    def test_execution_quote_is_exact_and_invalid_quotes_are_discarded(self):
+        actions=[{'side':'BUY','symbol':'ALTUSDT'}, {'side':'SELL','symbol':'BTCUSDT'}]
+        def market(_path, **params):
+            self.assertEqual(params['symbol'],'ALTUSDT')
+            return {'symbol':'ALTUSDT','bidPrice':'1.000','askPrice':'1.002'}
+        with patch.object(cloud_run.time,'time',return_value=1234.5):
+            self.assertEqual(cloud_run.execution_quotes(actions,market),
+                [{'symbol':'ALTUSDT','bid':1.0,'ask':1.002,'at':1234500,'source':'Binance spot'}])
+        self.assertEqual(cloud_run.execution_quotes(actions,
+            lambda *_args,**_kwargs:{'symbol':'BTCUSDT','bidPrice':'1','askPrice':'1.1'}),[])
+        self.assertEqual(cloud_run.execution_quotes(actions,
+            lambda *_args,**_kwargs:{'symbol':'ALTUSDT','bidPrice':'1.1','askPrice':'1'}),[])
+
     def test_workflow_does_not_export_private_files(self):
         workflow=(ROOT/'.github/workflows/analysis.yml').read_text()
         for forbidden in ['upload-artifact','actions/cache','pull_request_target','set -x','printenv','ACTIONS_STEP_DEBUG']:

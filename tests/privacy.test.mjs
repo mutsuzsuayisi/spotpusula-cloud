@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import worker,{equal} from '../cloud/src/worker.mjs';
+import worker,{equal,reportQuote} from '../cloud/src/worker.mjs';
 const token='x'.repeat(48);
 const env={DASHBOARD_TOKEN:token,INGEST_TOKEN:'y'.repeat(48),DB:{prepare(){throw Error('SECRET_WALLET_SHOULD_NOT_BE_READ');}}};
 test('all personal endpoints reject anonymous readers before accessing database',async()=>{
@@ -29,4 +29,15 @@ test('short and absent configured tokens cannot authenticate',async()=>{
 test('private exception messages never reach clients',async()=>{
   const r=await worker.fetch(new Request('https://example.test/api/dashboard',{headers:{Cookie:'sp_session='+token}}),env);
   assert.equal(r.status,400);assert.equal((await r.text()).includes('SECRET'),false);assert.equal(r.headers.get('Cache-Control'),'no-store');
+});
+test('authenticated runner quote backup requires exact symbol, source and freshness',()=>{
+  const now=1_800_000_000_000;
+  const item={symbol:'ALTUSDT',bid:1,ask:1.001,at:now-1000,source:'Binance spot'};
+  assert.deepEqual(reportQuote({execution_quotes:[item]},'ALTUSDT',now),
+    {bid:item.bid,ask:item.ask,at:item.at,source:item.source});
+  assert.equal(reportQuote({execution_quotes:[item]},'BTCUSDT',now),null);
+  assert.equal(reportQuote({execution_quotes:[{...item,source:'unknown'}]},'ALTUSDT',now),null);
+  assert.equal(reportQuote({execution_quotes:[{...item,at:now-30001}]},'ALTUSDT',now),null);
+  assert.equal(reportQuote({execution_quotes:[{...item,ask:0.5}]},'ALTUSDT',now),null);
+  assert.equal(reportQuote({execution_quotes:[item,item]},'ALTUSDT',now),null);
 });
