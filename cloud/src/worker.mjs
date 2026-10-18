@@ -34,7 +34,7 @@ async function save(env,old,w,events=[],report=null) {
   if(report)stmts.push(env.DB.prepare('INSERT INTO reports(id,created,body) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM wallet WHERE token=?)').bind(report.id,when,JSON.stringify(report),token));
   const result=await env.DB.batch(stmts);return result[0].meta.changes===1;
 }
-async function quotes(symbols) {
+async function quotes(symbols,quick=false) {
   const out={};
   await Promise.all([...new Set(symbols)].map(async symbol=>{
     if(!/^[A-Z0-9]{2,26}USDT$/.test(symbol))throw Error('SYMBOL_INVALID');
@@ -45,6 +45,9 @@ async function quotes(symbols) {
       if(r.ok){const q=await r.json(),t=q?.result?.list?.[0],bid=Number(t?.bid1Price),ask=Number(t?.ask1Price);
         if(q.retCode===0&&t?.symbol===symbol&&bid>0&&ask>=bid){out[symbol]={bid,ask,at:start,source:'Bybit spot'};return;}}
     }catch{}
+    // Report ingestion has a fresh authenticated Binance quote available.
+    // Do not spend 24 more seconds trying blocked hosts until it expires.
+    if(quick)throw Error('MARKET_UNAVAILABLE');
     for(const host of ['data-api.binance.vision','api.binance.com','api1.binance.com']){
       try{
         const start=Date.now();
@@ -94,7 +97,7 @@ async function ingest(env,r){
     const compatible=basis(w)===r.wallet_basis;
     const allowed=compatible&&!w.paused;
     let q={};
-    if(allowed){try{q=await quotes([...w.positions.map(p=>p.symbol),...r.analysis.actions.map(a=>a.symbol)]);}catch{}}
+    if(allowed){try{q=await quotes([...w.positions.map(p=>p.symbol),...r.analysis.actions.map(a=>a.symbol)],true);}catch{}}
     // Stop/target checks take priority over discretionary model actions.
     events.push(...checkStops(w,q));
     for(const a of r.analysis.actions){
@@ -107,6 +110,7 @@ async function ingest(env,r){
           if(!btc||![btc.close,btc.ema20,btc.ema50].every(Number.isFinite))throw Error('BTC_UNCONFIRMED');
           if(Date.now()-btc.last_closed>5*3600000||Date.now()-(c?.four_hour?.last_closed||0)>5*3600000)throw Error('CANDLE_STALE');
           const weakMarket=!(btc.close>btc.ema20&&btc.close>btc.ema50);
+          if(w.positions.some(p=>!q[p.symbol]))throw Error('MARKET_UNAVAILABLE');
           // Only the authenticated runner's fresh quote may back up a BUY.
           // Stop monitoring and SELL still require a live Worker quote.
           const book=q[a.symbol]||reportQuote(r,a.symbol);
