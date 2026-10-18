@@ -87,6 +87,7 @@ işler küçültülmeli. Gemini ücretsiz kota hesabında 6 günlük isteğe yet
   puanı en az 70, kendi EMA20'si EMA50'sinin üzerinde; en çok 1 USDT risk
   ve 30 USDT harcama.
 - Masraflar: %0,1 komisyon ve %0,1 kayma, her yönde.
+- Sanal simülasyonda 1 USDT altı pozisyon açılmaz; 10 USDT altındaki sanal pozisyonlar mümkün olabilir ve gerçek borsanın asgari emir/miktar kurallarını temsil etmez.
 - Alışta aday filtresi ve adayın kapanmış 4 saatlik mumunun EMA20/50 üzerinde olması.
 - Model fiyatına göre %2'den fazla hareket, eski kotasyon ve uygunsuz stop/hedef reddedilir.
 - Masraflar sonrası hedef kazanç / planlanan stop kaybı en az 1,5.
