@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import worker,{equal,reportQuote} from '../cloud/src/worker.mjs';
+import worker,{equal,reportQuote,basis} from '../cloud/src/worker.mjs';
 const token='x'.repeat(48);
 const env={DASHBOARD_TOKEN:token,INGEST_TOKEN:'y'.repeat(48),DB:{prepare(){throw Error('SECRET_WALLET_SHOULD_NOT_BE_READ');}}};
 test('all personal endpoints reject anonymous readers before accessing database',async()=>{
@@ -40,4 +40,34 @@ test('authenticated runner quote backup requires exact symbol, source and freshn
   assert.equal(reportQuote({execution_quotes:[{...item,at:now-30001}]},'ALTUSDT',now),null);
   assert.equal(reportQuote({execution_quotes:[{...item,ask:0.5}]},'ALTUSDT',now),null);
   assert.equal(reportQuote({execution_quotes:[item,item]},'ALTUSDT',now),null);
+});
+test('paper BUY executes with fresh runner quote when Worker market fetch fails',async()=>{
+  const now=Date.now();
+  const wallet={cash:200,realized:0,paused:false,positions:[]};
+  const db={wallet,version:0,report:null,
+    prepare(sql){const statement={sql,args:[],bind(...args){this.args=args;return this;},
+      async first(){if(sql.startsWith('SELECT id FROM reports'))return db.report?{id:db.report.id}:null;
+        return {version:db.version,body:JSON.stringify(db.wallet)};}};return statement;},
+    async batch(statements){const [update,...rest]=statements;
+      db.wallet=JSON.parse(update.args[0]);db.version++;
+      db.report=JSON.parse(rest.find(s=>s.sql.startsWith('INSERT INTO reports')).args[2]);
+      return [{meta:{changes:1}}];}};
+  const report={id:'cycle-'+now,wallet_basis:basis(wallet),price_time:new Date(now).toISOString(),
+    analysis:{summary:'Test',detail:'Synthetic paper test',actions:[
+      {side:'BUY',symbol:'ALTUSDT',stop:0.9,target:1.4,reason:'Synthetic test'}]},
+    candidates:[{symbol:'ALTUSDT',price:1,score:90,scenario_allowed:true,
+      four_hour:{close:1.1,ema20:1,ema50:0.9,last_closed:now-3600000}}],
+    btc:{four_hour:{close:2,ema20:1.5,ema50:1,last_closed:now-3600000}},blocked:false,
+    execution_quotes:[{symbol:'ALTUSDT',bid:1,ask:1.001,at:now,source:'Binance spot'}]};
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async()=>{throw Error('Worker market unavailable');};
+  try{
+    const response=await worker.fetch(new Request('https://example.test/internal/report',
+      {method:'POST',headers:{Authorization:'Bearer '+env.INGEST_TOKEN},body:JSON.stringify(report)}),
+      {...env,DB:db});
+    assert.equal(response.status,200);
+    assert.equal(db.report.outcomes[0].status,'EXECUTED');
+    assert.equal(db.wallet.positions.length,1);
+    assert.ok(db.wallet.cash<200);
+  }finally{globalThis.fetch=originalFetch;}
 });
