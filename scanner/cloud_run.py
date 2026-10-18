@@ -71,6 +71,23 @@ def validate_answer(answer):
     return data
 
 
+def execution_quotes(actions, market):
+    """Get fresh public spot books after the model finishes, just before upload."""
+    quotes = []
+    for symbol in {a.get('symbol') for a in actions if a.get('side') == 'BUY'}:
+        if not isinstance(symbol, str) or not re.fullmatch(r'[A-Z0-9]{2,26}USDT', symbol):
+            continue
+        try:
+            book = market('ticker/bookTicker', symbol=symbol)
+            bid, ask = float(book['bidPrice']), float(book['askPrice'])
+            if book.get('symbol') == symbol and 0 < bid <= ask < float('inf'):
+                quotes.append({'symbol': symbol, 'bid': bid, 'ask': ask,
+                               'at': int(time.time() * 1000), 'source': 'Binance spot'})
+        except (KeyError, TypeError, ValueError):
+            pass
+    return quotes
+
+
 def cycle():
     global STAGE
     import engine
@@ -155,9 +172,11 @@ def cycle():
     closed=market['BTCUSDT']['four_hour']['last_closed']
     reset_at=wallet.get('reset_at')
     reset_ms=int(datetime.fromisoformat(reset_at.replace('Z','+00:00')).timestamp()*1000) if reset_at else 0
+    STAGE = 'execution_quotes'
+    fresh_quotes=execution_quotes(answer['actions'], providers.market)
     result={'id':'cycle-'+str(max(int(closed),reset_ms)),'wallet_basis':context['basis'],'price_time':scan['price_time'],
             'analysis':answer,'candidates':candidates,'btc':market['BTCUSDT'],
-            'blocked':summary['scenario_blocked'],'model':model}
+            'blocked':summary['scenario_blocked'],'model':model,'execution_quotes':fresh_quotes}
     STAGE = 'save_report'
     if not cloud('/internal/report',result).get('ok'):raise ValueError('UPLOAD_FAILED')
 
