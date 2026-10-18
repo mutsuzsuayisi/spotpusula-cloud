@@ -96,9 +96,11 @@ işler küçültülmeli. Gemini ücretsiz kota hesabında 6 günlük isteğe yet
 - Duraklatma modelin alım/satımını durdurur; mevcut koruyucu stop/hedef takibi sürer.
 - Yeterli piyasa verisi yoksa yeni işlem açılmaz. Kota dolması stop takibini de
   kesebilir; panelde son kontrol zamanını takip et.
-- Anlık bid/ask önce Binance spot kaynaklarından alınır. Cloudflare bu kaynaklara
-  erişemezse aynı sembolün Bybit spot kotasyonu yedek olur; modelin Binance
-  tarama fiyatından %2'den fazla ayrılan kotasyon ve geniş spread yine reddedilir.
+- Cloudflare anlık bid/ask için önce Bybit spotu, dakikalık takipte gerekirse Binance
+  spotu kullanır. Analiz sırasında sanal BUY için bu kaynaklara erişilemezse,
+  yalnız kimliği doğrulanmış analiz görevinin hemen önce aldığı Binance kotasyonu
+  en çok 30 saniye geçerli yedek olabilir. Stop takibi ve SELL bu yedeği kullanmaz.
+  Modelin tarama fiyatından %2'den fazla ayrılan kotasyon ve geniş spread reddedilir.
 
 Bunlar ölçülebilir başlangıç kurallarıdır; istatistiksel olarak doğrulanmış strateji değildir.
 
